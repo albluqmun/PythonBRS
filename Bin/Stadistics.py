@@ -1,5 +1,9 @@
+import datetime
+import json
 import requests
+from copy import deepcopy
 from xml.etree import ElementTree as ET
+
 
 # URL para obtener las variables
 url_get = "http://172.29.16.11:8008/GetUserVars"
@@ -21,34 +25,59 @@ def get_video_variables():
     
     return video_dict
 
-# Función para calcular reproducciones diarias y ajustar el valor
-def adjust_social_es_central(video_dict):
-    video_name = "SOCIAL_ES_CENTRAL.mp4"
-    if video_name in video_dict:
-        reproductions_per_day = 16  # Reproducciones por día
-        video_dict[video_name] -= int(reproductions_per_day)
+def cook_send_stadistics(video_dict):
+    # Se va a hacer un envio por cada sala
+    translate_languages = {'ES': 'es',
+                           'ENG': 'en',
+                           'POR': 'pt',
+                           'FRA': 'fr',
+                           'GAL': 'ga'
+                           }
+    template = {'id': 'stadistics',
+                'type': 'sala 270', # identificador del tipo de dispositivo
+                'deviceId': '', # identificador de la sala
+                'languages': [],
+                'total_play': 0,
+                'time': datetime.datetime.now().timestamp()
+                }
+
+    moda = deepcopy(template)
+    moda['deviceId'] = 'La Moda'
+    guerra = deepcopy(template)
+    guerra['deviceId'] = 'Europa en guerra'
+    social = deepcopy(template)
+    social['deviceId'] = 'La vida social I'
+    social2 = deepcopy(template)
+    social2['deviceId'] = 'La vida social II'
+    descul = deepcopy(template)
+    descul['deviceId'] = 'El despertar cultural de Pontevedra'
+
+    for name in video_dict:
+        name_separated = name.split("_")
+        dict_room = locals()[name_separated[0].lower()]
+        languages = dict_room["languages"]
+        dict_lang = {translate_languages[name_separated[1]]: video_dict[name]}
+        languages.append(dict_lang)
+        dict_room["languages"] = languages
+
+    for ele in [moda, guerra, social, social2, descul]:
+        ele["total_play"] = sum(value for d in ele["languages"] for value in d.values())
+        url = "https://panel-node-red.touristinsideriasbaixas.com/rooms/data"
+        json_send = data=json.dumps(ele)
+        requests.post(auth=('component', 't035geRtW5mKOapytbPix1Kf'), url=url, data=json_send)
+
 
 # Función para resetear los valores
 def reset_video_variables(video_dict):
     reset_data = {name: 0 for name in video_dict}
     requests.post(url_set, data=reset_data)
 
-# Función para guardar el diccionario en un archivo de texto
-def save_dict_to_file(video_dict, filename):
-    with open(filename, 'w') as file:
-        for key, value in video_dict.items():
-            file.write(f"{key}: {value}\n")
-
 
 # MAIN
 # Obtener las variables
 video_variables = get_video_variables()
 
-# Ajustar el valor de SOCIAL_ES_CENTRAL
-adjust_social_es_central(video_variables)
-
-# Guardar el diccionario en un archivo de texto
-save_dict_to_file(video_variables, 'video_variables.txt')
+cook_send_stadistics(video_variables)
 
 # Resetear los valores a 0
 reset_video_variables(video_variables)
